@@ -1,0 +1,21 @@
+{
+  "name": "agentmesh",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "cd apps/api && ./gradlew run",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:api": "cd apps/api && ./gradlew buildFatJar",
+    "build": "npm run build:api && npm run build:web",
+    "lint": "npm run lint --workspace=apps/web"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
