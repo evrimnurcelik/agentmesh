@@ -153,11 +153,13 @@ export function ChainsTab({ apiKey }: { apiKey: string }) {
 // ═══════════════════════════════════════════════════════
 // TEAMS TAB (v0.3)
 // ═══════════════════════════════════════════════════════
+type TeamForm = { name: string; description: string; owner_email: string; public: boolean };
+
 export function TeamsTab({ apiKey }: { apiKey: string }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", owner_email: "", public: true });
+  const [form, setForm] = useState<TeamForm>({ name: "", description: "", owner_email: "", public: true });
   const [creating, setCreating] = useState(false);
   const [newTeamKey, setNewTeamKey] = useState<{ team_id: string; api_key: string } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -217,10 +219,10 @@ export function TeamsTab({ apiKey }: { apiKey: string }) {
         <div style={{ padding: "20px", borderRadius: 8, background: "rgba(255,255,255,0.02)",
           border: "1px solid rgba(255,255,255,0.1)", marginBottom: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            {[["name", "Team name", "text"], ["owner_email", "Owner email", "email"]].map(([k, ph, type]) => (
+            {([ ["name", "Team name", "text"], ["owner_email", "Owner email", "email"] ] as const).map(([k, ph, type]) => (
               <div key={k}>
                 <label style={s.label}>{ph.toUpperCase()}</label>
-                <input value={(form as Record<string, string>)[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                <input value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value } as TeamForm))}
                   type={type} placeholder={ph}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 5, fontSize: 13,
                     background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",

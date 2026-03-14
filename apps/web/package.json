@@ -10,23 +10,23 @@
     "db:migrate": "node supabase/migrate.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.43.4",
     "next": "14.2.5",
     "react": "^18",
     "react-dom": "^18",
-    "@supabase/supabase-js": "^2.43.4",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^18",
+    "@types/node": "20.19.37",
+    "@types/react": "18.3.28",
     "@types/react-dom": "^18",
     "@types/uuid": "^10",
-    "typescript": "^5",
+    "autoprefixer": "^10",
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
-    "tailwindcss": "^3.4.1",
     "postcss": "^8",
-    "autoprefixer": "^10"
+    "tailwindcss": "^3.4.1",
+    "typescript": "5.9.3"
   }
 }
