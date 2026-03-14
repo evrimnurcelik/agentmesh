@@ -31,7 +31,7 @@ jobs:
           gradle-version: 8.4.3
 
       - name: Build fat JAR
-        run: gradle buildFatJar --no-daemon
+        run: gradle fatJar --no-daemon
 
       - name: Deploy to Fly.io
         if: github.ref == 'refs/heads/main' && secrets.FLY_API_TOKEN
