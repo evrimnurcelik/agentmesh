@@ -4,6 +4,7 @@ import io.agentmesh.db.Agents
 import io.agentmesh.db.Capabilities
 import io.agentmesh.db.DatabaseFactory.query
 import io.agentmesh.db.Matches
+import io.agentmesh.db.SlaViolations
 import io.agentmesh.models.*
 import io.agentmesh.services.MatchingService
 import io.agentmesh.util.*
@@ -74,6 +75,9 @@ fun Route.matchRoutes() {
         val agentId = call.authenticatedAgentId()
             ?: return@post call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized", "unauthorized", "Invalid API key"))
 
+        // v0.4: Accept optional SLA
+        val approveReq = runCatching { call.receive<ApproveMatchWithSlaRequest>() }.getOrDefault(ApproveMatchWithSlaRequest())
+
         val result = query {
             val match = Matches.select { Matches.id eq matchId }.singleOrNull()
                 ?: return@query null to "match_not_found"
@@ -110,6 +114,9 @@ fun Route.matchRoutes() {
                 Matches.update({ Matches.id eq matchId }) { row ->
                     row[status]   = "active"
                     row[Matches.contract] = contract.toJsonString()
+                    if (approveReq.sla != null) {
+                        row[Matches.sla] = approveReq.sla.toJsonString()
+                    }
                     row[updatedAt] = now
                 }
 
@@ -136,6 +143,69 @@ fun Route.matchRoutes() {
             null              -> call.respond(HttpStatusCode.OK, response!!)
             else              -> call.respond(HttpStatusCode.InternalServerError, ApiError("internal_error", "error", "Unexpected error"))
         }
+    }
+
+    // ─────────────────────────────────────────
+    // GET /matches/{matchId}/sla — SLA compliance stats (v0.4)
+    // ─────────────────────────────────────────
+    get("/matches/{matchId}/sla") {
+        val matchId = call.parameters["matchId"]!!
+
+        val match = query { Matches.select { Matches.id eq matchId }.singleOrNull() }
+        if (match == null) {
+            call.respond(HttpStatusCode.NotFound, ApiError("not_found", "not_found", "Match not found"))
+            return@get
+        }
+
+        val slaStr = match[Matches.sla]
+        val violations = query {
+            SlaViolations.select { SlaViolations.matchId eq matchId }
+                .orderBy(SlaViolations.createdAt, SortOrder.DESC)
+                .limit(50)
+                .map { row ->
+                    mapOf(
+                        "id" to row[SlaViolations.id],
+                        "violation_type" to row[SlaViolations.violationType],
+                        "measured_value" to row[SlaViolations.measuredValue].toDouble(),
+                        "threshold" to row[SlaViolations.threshold].toDouble(),
+                        "window_start" to row[SlaViolations.windowStart].toString(),
+                        "window_end" to row[SlaViolations.windowEnd].toString(),
+                        "resolved" to row[SlaViolations.resolved],
+                        "created_at" to row[SlaViolations.createdAt].toString()
+                    )
+                }
+        }
+
+        call.respond(mapOf(
+            "match_id" to matchId,
+            "sla" to slaStr?.fromJson<SlaRequirement>(),
+            "violations" to violations,
+            "violation_count" to violations.size
+        ))
+    }
+
+    // ─────────────────────────────────────────
+    // GET /agents/{agentId}/sla-violations — all violations for agent (v0.4)
+    // ─────────────────────────────────────────
+    get("/agents/{agentId}/sla-violations") {
+        val agentId = call.parameters["agentId"]!!
+        val violations = query {
+            SlaViolations.select { SlaViolations.violatingAgentId eq agentId }
+                .orderBy(SlaViolations.createdAt, SortOrder.DESC)
+                .limit(100)
+                .map { row ->
+                    mapOf(
+                        "id" to row[SlaViolations.id],
+                        "match_id" to row[SlaViolations.matchId],
+                        "violation_type" to row[SlaViolations.violationType],
+                        "measured_value" to row[SlaViolations.measuredValue].toDouble(),
+                        "threshold" to row[SlaViolations.threshold].toDouble(),
+                        "resolved" to row[SlaViolations.resolved],
+                        "created_at" to row[SlaViolations.createdAt].toString()
+                    )
+                }
+        }
+        call.respond(mapOf("violations" to violations, "count" to violations.size))
     }
 
     // ─────────────────────────────────────────

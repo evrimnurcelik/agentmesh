@@ -31,9 +31,14 @@ object Agents : Table("agents") {
     val lastPing        = timestamp("last_ping").nullable()
     val stats           = jsonb("stats")
     val verifiedAt      = timestamp("verified_at").nullable()
-    val stripeAccountId = text("stripe_account_id").nullable()
-    val createdAt       = timestamp("created_at")
-    val updatedAt       = timestamp("updated_at")
+    val stripeAccountId        = text("stripe_account_id").nullable()
+    val currentVersion         = integer("current_version").default(1)               // v0.4
+    val marketplaceListed      = bool("marketplace_listed").default(false)            // v0.4
+    val marketplaceTagline     = text("marketplace_tagline").nullable()               // v0.4
+    val marketplaceCategories  = array<String>("marketplace_categories")              // v0.4
+    val orgId                  = text("org_id").nullable()                            // v0.4
+    val createdAt              = timestamp("created_at")
+    val updatedAt              = timestamp("updated_at")
     override val primaryKey = PrimaryKey(id)
 }
 
@@ -50,6 +55,9 @@ object Matches : Table("matches") {
     val approvedByB    = bool("approved_by_b").default(false)
     val contract       = jsonb("contract").nullable()
     val dismissedUntil = timestamp("dismissed_until").nullable()
+    val agentAVersion  = integer("agent_a_version").default(1)           // v0.4
+    val agentBVersion  = integer("agent_b_version").default(1)           // v0.4
+    val sla            = jsonb("sla").nullable()                         // v0.4
     val createdAt      = timestamp("created_at")
     val updatedAt      = timestamp("updated_at")
     override val primaryKey = PrimaryKey(id)
@@ -75,6 +83,7 @@ object Delegations : Table("delegations") {
     val parentDelegationId = text("parent_delegation_id").nullable()
     val fallbackAgentId    = text("fallback_agent_id").nullable()
     val fallbackTriggered  = bool("fallback_triggered").default(false)
+    val streaming          = bool("streaming").default(false)               // v0.4
     val createdAt          = timestamp("created_at")
     val startedAt          = timestamp("started_at").nullable()
     val completedAt        = timestamp("completed_at").nullable()
@@ -124,6 +133,128 @@ object BillingTransactions : Table("billing_transactions") {
     val stripePaymentIntentId = text("stripe_payment_intent_id").nullable()
     val status                = text("status").default("pending")
     val createdAt             = timestamp("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ─── v0.4: Health Monitoring ─────────────────────────────
+
+object AgentHealthChecks : Table("agent_health_checks") {
+    val id        = text("id")
+    val agentId   = text("agent_id").references(Agents.id)
+    val status    = text("status")
+    val latencyMs = integer("latency_ms").nullable()
+    val checkedAt = timestamp("checked_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ─── v0.4: Agent Versioning ─────────────────────────────
+
+object AgentVersions : Table("agent_versions") {
+    val id          = text("id")
+    val agentId     = text("agent_id").references(Agents.id)
+    val version     = integer("version")
+    val has         = array<String>("has")
+    val needs       = array<String>("needs")
+    val description = text("description")
+    val changelog   = text("changelog").nullable()
+    val createdAt   = timestamp("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ─── v0.4: Marketplace ──────────────────────────────────
+
+object MarketplaceReviews : Table("marketplace_reviews") {
+    val id              = text("id")
+    val agentId         = text("agent_id").references(Agents.id)
+    val reviewerAgentId = text("reviewer_agent_id").references(Agents.id)
+    val rating          = integer("rating")
+    val comment         = text("comment").nullable()
+    val delegationId    = text("delegation_id").nullable()
+    val createdAt       = timestamp("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object PlatformFees : Table("platform_fees") {
+    val id                    = text("id")
+    val billingTransactionId  = text("billing_transaction_id").references(BillingTransactions.id)
+    val feeCents              = integer("fee_cents")
+    val currency              = text("currency").default("usd")
+    val createdAt             = timestamp("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ─── v0.4: Organizations ────────────────────────────────
+
+object Orgs : Table("orgs") {
+    val id               = text("id")
+    val name             = text("name")
+    val slug             = text("slug")
+    val plan             = text("plan").default("free")
+    val stripeCustomerId = text("stripe_customer_id").nullable()
+    val createdAt        = timestamp("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object OrgMembers : Table("org_members") {
+    val orgId     = text("org_id").references(Orgs.id)
+    val email     = text("email")
+    val role      = text("role")
+    val invitedAt = timestamp("invited_at")
+    val joinedAt  = timestamp("joined_at").nullable()
+    override val primaryKey = PrimaryKey(orgId, email)
+}
+
+object OrgApiKeys : Table("org_api_keys") {
+    val id         = text("id")
+    val orgId      = text("org_id").references(Orgs.id)
+    val name       = text("name")
+    val apiKeyHash = text("api_key_hash")
+    val scopes     = array<String>("scopes")
+    val createdAt  = timestamp("created_at")
+    val lastUsedAt = timestamp("last_used_at").nullable()
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ─── v0.4: SLA Violations ───────────────────────────────
+
+object SlaViolations : Table("sla_violations") {
+    val id               = text("id")
+    val matchId          = text("match_id").references(Matches.id)
+    val violatingAgentId = text("violating_agent_id").references(Agents.id)
+    val violationType    = text("violation_type")
+    val measuredValue    = decimal("measured_value", 10, 4)
+    val threshold        = decimal("threshold", 10, 4)
+    val windowStart      = timestamp("window_start")
+    val windowEnd        = timestamp("window_end")
+    val resolved         = bool("resolved").default(false)
+    val createdAt        = timestamp("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ─── v0.4: MCP Server Registry ──────────────────────────
+
+object McpServers : Table("mcp_servers") {
+    val id         = text("id")
+    val agentId    = text("agent_id").references(Agents.id)
+    val name       = text("name")
+    val url        = text("url")
+    val authType   = text("auth_type").default("none")
+    val authSecret = text("auth_secret").nullable()
+    val tools      = jsonb("tools")
+    val lastSynced = timestamp("last_synced").nullable()
+    val createdAt  = timestamp("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ─── v0.4: Delegation Events (Streaming) ────────────────
+
+object DelegationEvents : Table("delegation_events") {
+    val id           = text("id")
+    val delegationId = text("delegation_id").references(Delegations.id)
+    val sequence     = integer("sequence")
+    val eventType    = text("event_type")
+    val data         = jsonb("data")
+    val createdAt    = timestamp("created_at")
     override val primaryKey = PrimaryKey(id)
 }
 

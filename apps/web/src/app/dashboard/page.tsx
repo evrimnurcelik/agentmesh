@@ -221,7 +221,11 @@ export default function Dashboard() {
                     transition: "all 0.12s" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{agent.name}</div>
+                      <Link href={`/agents/${agent.id}`} onClick={e => e.stopPropagation()}
+                        style={{ fontSize: 14, fontWeight: 600, marginBottom: 2, display: "block",
+                          color: "#fff", textDecoration: "none" }}>
+                        {agent.name}
+                      </Link>
                       <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "'IBM Plex Mono', monospace" }}>
                         {agent.id} · {agent.framework}
                       </div>
@@ -431,9 +435,25 @@ export default function Dashboard() {
                         border: "1px solid rgba(255,255,255,0.05)", overflowX: "auto" }}>
                         {JSON.stringify(d.output ?? d.error ?? d.input, null, 2)}
                       </pre>
-                      <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,255,255,0.2)", fontFamily: "'IBM Plex Mono', monospace" }}>
-                        id: {d.id} · created: {new Date(d.created_at).toLocaleTimeString()}
-                        {d.completed_at && ` · completed: ${new Date(d.completed_at).toLocaleTimeString()}`}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                          id: {d.id} · created: {new Date(d.created_at).toLocaleTimeString()}
+                          {d.completed_at && ` · completed: ${new Date(d.completed_at).toLocaleTimeString()}`}
+                        </div>
+                        {(d.status === "failed" || d.status === "timed_out") && apiKey && (
+                          <button onClick={async () => {
+                            try {
+                              const res = await delegationsApi.replay(d.id, apiKey);
+                              showToast(`Replaying → new delegation: ${res.delegation_id}`);
+                              loadDelegations();
+                            } catch (e: unknown) { showToast(e instanceof Error ? e.message : "Replay failed"); }
+                          }} style={{
+                            padding: "5px 12px", borderRadius: 5, fontSize: 11, fontWeight: 600,
+                            background: "rgba(99,235,165,0.1)", border: "1px solid rgba(99,235,165,0.2)",
+                            color: "rgba(99,235,165,0.8)" }}>
+                            ↻ Replay
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

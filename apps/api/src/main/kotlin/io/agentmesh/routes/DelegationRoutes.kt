@@ -3,9 +3,11 @@ package io.agentmesh.routes
 import io.agentmesh.db.Agents
 import io.agentmesh.db.BillingRates
 import io.agentmesh.db.BillingTransactions
+import io.agentmesh.db.Capabilities
 import io.agentmesh.db.DatabaseFactory.query
 import io.agentmesh.db.Delegations
 import io.agentmesh.db.Matches
+import io.agentmesh.db.DelegationEvents
 import io.agentmesh.models.*
 import io.agentmesh.services.WebhookService
 import io.agentmesh.util.*
@@ -75,6 +77,54 @@ fun Route.delegationRoutes(webhookSecret: String) {
             return@post
         }
 
+        // v0.4: Schema validation
+        val capability = query {
+            Capabilities.selectAll()
+                .firstOrNull { it[Capabilities.taskTypes].contains(req.task) }
+        }
+
+        if (capability != null) {
+            val schemaStr = capability[Capabilities.inputSchema]
+            if (schemaStr.isNotBlank() && schemaStr != "{}" && schemaStr != "null") {
+                try {
+                    val schema = schemaStr.fromJson<Map<String, Map<String, Any?>>>()
+                    val validationErrors = mutableListOf<String>()
+
+                    schema.forEach { (field, rules) ->
+                        val required = rules["required"] as? Boolean ?: false
+                        val expectedType = rules["type"] as? String
+                        val value = req.input[field]
+
+                        if (required && value == null) {
+                            validationErrors.add("Missing required field: '$field'")
+                        }
+                        if (value != null && expectedType != null) {
+                            val typeOk = when (expectedType) {
+                                "string"  -> value is String
+                                "number"  -> value is Number
+                                "integer" -> value is Int || value is Long
+                                "boolean" -> value is Boolean
+                                "array"   -> value is List<*>
+                                "object"  -> value is Map<*, *>
+                                else -> true
+                            }
+                            if (!typeOk) validationErrors.add("Field '$field' must be $expectedType")
+                        }
+                    }
+
+                    if (validationErrors.isNotEmpty()) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError(
+                            "schema_validation_failed", "invalid_input",
+                            validationErrors.joinToString("; ")
+                        ))
+                        return@post
+                    }
+                } catch (_: Exception) {
+                    // Schema parse failed — skip validation
+                }
+            }
+        }
+
         // Idempotency check
         val existing = query {
             Delegations.select {
@@ -129,6 +179,7 @@ fun Route.delegationRoutes(webhookSecret: String) {
                 it[chainDepth]         = req.chainDepth
                 it[parentDelegationId] = req.parentDelegationId
                 it[fallbackAgentId]    = req.fallbackAgentId
+                it[streaming]          = req.streaming
                 it[createdAt]          = now
             }
         }
@@ -145,6 +196,83 @@ fun Route.delegationRoutes(webhookSecret: String) {
         call.respond(HttpStatusCode.Accepted, DelegateResponse(
             delegationId = delegationId,
             chainId      = chainId,
+            status       = "queued"
+        ))
+    }
+
+    // ─────────────────────────────────────────
+    // POST /delegations/{delegationId}/replay — v0.4
+    // ─────────────────────────────────────────
+    post("/delegations/{delegationId}/replay") {
+        val delegationId = call.parameters["delegationId"]!!
+        val agentId = call.authenticatedAgentId()
+            ?: return@post call.respond(HttpStatusCode.Unauthorized,
+                ApiError("unauthorized", "unauthorized", "Invalid API key"))
+
+        val original = query {
+            Delegations.select { Delegations.id eq delegationId }.singleOrNull()
+        }
+
+        if (original == null) {
+            call.respond(HttpStatusCode.NotFound,
+                ApiError("not_found", "not_found", "Delegation not found"))
+            return@post
+        }
+
+        if (original[Delegations.fromAgentId] != agentId) {
+            call.respond(HttpStatusCode.Forbidden,
+                ApiError("forbidden", "forbidden", "Only the sender can replay a delegation"))
+            return@post
+        }
+
+        val status = original[Delegations.status]
+        if (status != "failed" && status != "timed_out") {
+            call.respond(HttpStatusCode.BadRequest,
+                ApiError("invalid_status", "bad_request", "Only failed or timed_out delegations can be replayed"))
+            return@post
+        }
+
+        val target = query {
+            Agents.select { Agents.id eq original[Delegations.toAgentId] }.singleOrNull()
+        }
+        if (target == null) {
+            call.respond(HttpStatusCode.NotFound,
+                ApiError("agent_not_found", "not_found", "Target agent no longer exists"))
+            return@post
+        }
+
+        val newDelegationId = newId("dl")
+        val now = Instant.now()
+        val newIdempotencyKey = "${original[Delegations.idempotencyKey]}_replay_${System.currentTimeMillis()}"
+
+        query {
+            Delegations.insert {
+                it[id]                 = newDelegationId
+                it[matchId]            = original[Delegations.matchId]
+                it[fromAgentId]        = original[Delegations.fromAgentId]
+                it[toAgentId]          = original[Delegations.toAgentId]
+                it[task]               = original[Delegations.task]
+                it[input]              = original[Delegations.input]
+                it[callbackUrl]        = original[Delegations.callbackUrl]
+                it[idempotencyKey]     = newIdempotencyKey
+                it[timeoutSeconds]     = original[Delegations.timeoutSeconds]
+                it[metadata]           = original[Delegations.metadata]
+                it[Delegations.status] = "queued"
+                it[chainId]            = original[Delegations.chainId]
+                it[chainDepth]         = original[Delegations.chainDepth]
+                it[parentDelegationId] = delegationId
+                it[fallbackAgentId]    = original[Delegations.fallbackAgentId]
+                it[createdAt]          = now
+            }
+        }
+
+        scope.launch {
+            dispatchToExecutor(newDelegationId, target[Agents.webhookUrl], webhookSecret)
+        }
+
+        call.respond(HttpStatusCode.Accepted, DelegateResponse(
+            delegationId = newDelegationId,
+            chainId      = original[Delegations.chainId],
             status       = "queued"
         ))
     }
@@ -199,6 +327,72 @@ fun Route.delegationRoutes(webhookSecret: String) {
             return@get
         }
         call.respond(delegation)
+    }
+    // ─────────────────────────────────────────
+    // GET /delegations/{delegationId}/events — poll for streaming events (v0.4)
+    // ─────────────────────────────────────────
+    get("/delegations/{delegationId}/events") {
+        val delegationId = call.parameters["delegationId"]!!
+        val sinceSequence = call.request.queryParameters["since_sequence"]?.toIntOrNull() ?: 0
+
+        val events = query {
+            DelegationEvents.select {
+                (DelegationEvents.delegationId eq delegationId) and
+                (DelegationEvents.sequence greater sinceSequence)
+            }.orderBy(DelegationEvents.sequence, SortOrder.ASC)
+                .map { row ->
+                    mapOf(
+                        "id" to row[DelegationEvents.id],
+                        "delegation_id" to row[DelegationEvents.delegationId],
+                        "sequence" to row[DelegationEvents.sequence],
+                        "event_type" to row[DelegationEvents.eventType],
+                        "data" to row[DelegationEvents.data].fromJson<Map<String, Any?>>(),
+                        "created_at" to row[DelegationEvents.createdAt].toString()
+                    )
+                }
+        }
+
+        call.respond(mapOf("events" to events, "count" to events.size))
+    }
+
+    // ─────────────────────────────────────────
+    // POST /webhooks/progress — receive streaming progress events (v0.4)
+    // ─────────────────────────────────────────
+    post("/webhooks/progress") {
+        val req = runCatching { call.receive<ProgressEvent>() }.getOrElse {
+            call.respond(HttpStatusCode.BadRequest,
+                ApiError("bad_request", "parse_error", "Invalid JSON"))
+            return@post
+        }
+
+        if (req.eventType !in listOf("progress", "partial_output", "error", "completed")) {
+            call.respond(HttpStatusCode.BadRequest,
+                ApiError("validation_error", "invalid_event_type", "event_type must be progress|partial_output|error|completed"))
+            return@post
+        }
+
+        val delegation = query {
+            Delegations.select { Delegations.id eq req.delegationId }.singleOrNull()
+        }
+        if (delegation == null) {
+            call.respond(HttpStatusCode.NotFound,
+                ApiError("not_found", "not_found", "Delegation not found"))
+            return@post
+        }
+
+        val eventId = newId("de")
+        query {
+            DelegationEvents.insert {
+                it[id] = eventId
+                it[delegationId] = req.delegationId
+                it[sequence] = req.sequence
+                it[eventType] = req.eventType
+                it[data] = req.data.toJsonString()
+                it[createdAt] = Instant.now()
+            }
+        }
+
+        call.respond(HttpStatusCode.OK, mapOf("event_id" to eventId, "delegation_id" to req.delegationId))
     }
 }
 

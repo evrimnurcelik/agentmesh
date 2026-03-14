@@ -271,7 +271,9 @@ data class DelegateRequest(
     @SerialName("chain_depth")     val chainDepth: Int = 0,
     @SerialName("parent_delegation_id") val parentDelegationId: String? = null,
     // v0.3: fallback agent
-    @SerialName("fallback_agent_id") val fallbackAgentId: String? = null
+    @SerialName("fallback_agent_id") val fallbackAgentId: String? = null,
+    // v0.4: streaming
+    val streaming: Boolean = false
 )
 
 @Serializable
@@ -334,3 +336,153 @@ data class ApiError(
 
 @Serializable
 data class StatusUpdate(val status: String)
+
+// ─────────────────────────────────────────
+// v0.4: Agent Versioning
+// ─────────────────────────────────────────
+
+@Serializable
+data class AgentVersion(
+    val id: String,
+    @SerialName("agent_id") val agentId: String,
+    val version: Int,
+    val has: List<String>,
+    val needs: List<String>,
+    val description: String,
+    val changelog: String? = null,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class PublishVersionRequest(
+    val changelog: String? = null
+)
+
+// ─────────────────────────────────────────
+// v0.4: Marketplace
+// ─────────────────────────────────────────
+
+@Serializable
+data class MarketplaceReview(
+    val id: String,
+    @SerialName("agent_id") val agentId: String,
+    @SerialName("reviewer_agent_id") val reviewerAgentId: String,
+    val rating: Int,
+    val comment: String? = null,
+    @SerialName("delegation_id") val delegationId: String? = null,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class ListMarketplaceRequest(
+    val tagline: String? = null,
+    val categories: List<String> = emptyList()
+)
+
+@Serializable
+data class SubmitReviewRequest(
+    @SerialName("agent_id") val agentId: String,
+    val rating: Int,
+    val comment: String? = null,
+    @SerialName("delegation_id") val delegationId: String? = null
+)
+
+// ─────────────────────────────────────────
+// v0.4: Organizations
+// ─────────────────────────────────────────
+
+@Serializable
+data class Org(
+    val id: String,
+    val name: String,
+    val slug: String,
+    val plan: String = "free",
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class CreateOrgRequest(
+    val name: String,
+    val slug: String
+)
+
+@Serializable
+data class InviteMemberRequest(
+    val email: String,
+    val role: String = "member"
+)
+
+@Serializable
+data class CreateOrgKeyRequest(
+    val name: String,
+    val scopes: List<String> = emptyList()
+)
+
+// ─────────────────────────────────────────
+// v0.4: SLA Contracts
+// ─────────────────────────────────────────
+
+@Serializable
+data class SlaRequirement(
+    @SerialName("min_uptime_pct")      val minUptimePct: Double = 95.0,
+    @SerialName("max_latency_ms")      val maxLatencyMs: Int = 10000,
+    @SerialName("max_failure_rate_pct") val maxFailureRatePct: Double = 5.0,
+    @SerialName("window_hours")        val windowHours: Int = 24
+)
+
+@Serializable
+data class ApproveMatchWithSlaRequest(
+    val sla: SlaRequirement? = null
+)
+
+// ─────────────────────────────────────────
+// v0.4: MCP Server
+// ─────────────────────────────────────────
+
+@Serializable
+data class McpServer(
+    val id: String,
+    @SerialName("agent_id") val agentId: String,
+    val name: String,
+    val url: String,
+    @SerialName("auth_type") val authType: String = "none",
+    val tools: List<String> = emptyList(),
+    @SerialName("last_synced") val lastSynced: String? = null,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class RegisterMcpServerRequest(
+    val name: String,
+    val url: String,
+    @SerialName("auth_type") val authType: String = "none",
+    @SerialName("auth_secret") val authSecret: String? = null
+)
+
+// ─────────────────────────────────────────
+// v0.4: Delegation Events (Streaming)
+// ─────────────────────────────────────────
+
+@Serializable
+data class DelegationEvent(
+    val id: String,
+    @SerialName("delegation_id") val delegationId: String,
+    val sequence: Int,
+    @SerialName("event_type") val eventType: String,
+    val data: Map<String, @Serializable Any?>,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class ProgressEvent(
+    @SerialName("delegation_id") val delegationId: String,
+    val sequence: Int,
+    @SerialName("event_type") val eventType: String,
+    val data: Map<String, @Serializable Any?>
+)
+
+@Serializable
+data class ValidationError(
+    val field: String,
+    val message: String
+)

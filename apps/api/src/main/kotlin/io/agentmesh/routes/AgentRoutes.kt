@@ -1,6 +1,7 @@
 package io.agentmesh.routes
 
 import io.agentmesh.db.Agents
+import io.agentmesh.db.AgentVersions
 import io.agentmesh.db.Capabilities
 import io.agentmesh.db.DatabaseFactory.query
 import io.agentmesh.db.Matches
@@ -206,6 +207,113 @@ fun Route.agentRoutes(minMatchScore: Int) {
 
         query { Agents.deleteWhere { id eq agentId } }
         call.respond(HttpStatusCode.NoContent)
+    }
+
+    // ─────────────────────────────────────────
+    // GET /agents/{agentId}/versions — list all versions (v0.4)
+    // ─────────────────────────────────────────
+    get("/agents/{agentId}/versions") {
+        val agentId = call.parameters["agentId"]!!
+        val versions = query {
+            AgentVersions.select { AgentVersions.agentId eq agentId }
+                .orderBy(AgentVersions.version, SortOrder.DESC)
+                .map { row ->
+                    AgentVersion(
+                        id = row[AgentVersions.id],
+                        agentId = row[AgentVersions.agentId],
+                        version = row[AgentVersions.version],
+                        has = row[AgentVersions.has].toList(),
+                        needs = row[AgentVersions.needs].toList(),
+                        description = row[AgentVersions.description],
+                        changelog = row[AgentVersions.changelog],
+                        createdAt = row[AgentVersions.createdAt].toString()
+                    )
+                }
+        }
+        call.respond(mapOf("versions" to versions, "count" to versions.size))
+    }
+
+    // ─────────────────────────────────────────
+    // GET /agents/{agentId}/versions/{v} — get specific version (v0.4)
+    // ─────────────────────────────────────────
+    get("/agents/{agentId}/versions/{v}") {
+        val agentId = call.parameters["agentId"]!!
+        val v = call.parameters["v"]?.toIntOrNull()
+            ?: return@get call.respond(HttpStatusCode.BadRequest,
+                ApiError("bad_request", "invalid_version", "Version must be an integer"))
+
+        val version = query {
+            AgentVersions.select {
+                (AgentVersions.agentId eq agentId) and (AgentVersions.version eq v)
+            }.singleOrNull()?.let { row ->
+                AgentVersion(
+                    id = row[AgentVersions.id],
+                    agentId = row[AgentVersions.agentId],
+                    version = row[AgentVersions.version],
+                    has = row[AgentVersions.has].toList(),
+                    needs = row[AgentVersions.needs].toList(),
+                    description = row[AgentVersions.description],
+                    changelog = row[AgentVersions.changelog],
+                    createdAt = row[AgentVersions.createdAt].toString()
+                )
+            }
+        }
+        if (version == null) {
+            call.respond(HttpStatusCode.NotFound,
+                ApiError("not_found", "not_found", "Version not found"))
+            return@get
+        }
+        call.respond(version)
+    }
+
+    // ─────────────────────────────────────────
+    // POST /agents/{agentId}/versions — publish new version (v0.4)
+    // ─────────────────────────────────────────
+    post("/agents/{agentId}/versions") {
+        val agentId = call.parameters["agentId"]!!
+        val authAgentId = call.authenticatedAgentId()
+            ?: return@post call.respond(HttpStatusCode.Unauthorized,
+                ApiError("unauthorized", "unauthorized", "Invalid API key"))
+        if (authAgentId != agentId)
+            return@post call.respond(HttpStatusCode.Forbidden,
+                ApiError("forbidden", "forbidden", "Cannot publish versions for another agent"))
+
+        val req = runCatching { call.receive<PublishVersionRequest>() }.getOrDefault(PublishVersionRequest())
+
+        val result = query {
+            val agent = Agents.select { Agents.id eq agentId }.singleOrNull()
+                ?: return@query null
+
+            val currentVersion = agent[Agents.currentVersion]
+            val newVersion = currentVersion + 1
+
+            AgentVersions.insert {
+                it[id] = newId("av")
+                it[AgentVersions.agentId] = agentId
+                it[version] = newVersion
+                it[has] = agent[Agents.has]
+                it[needs] = agent[Agents.needs]
+                it[description] = agent[Agents.description]
+                it[changelog] = req.changelog
+                it[createdAt] = Instant.now()
+            }
+
+            Agents.update({ Agents.id eq agentId }) {
+                it[Agents.currentVersion] = newVersion
+                it[Agents.updatedAt] = Instant.now()
+            }
+
+            mapOf("version" to newVersion, "agent_id" to agentId)
+        }
+
+        if (result == null) {
+            call.respond(HttpStatusCode.NotFound,
+                ApiError("not_found", "not_found", "Agent not found"))
+        } else {
+            // Re-run matching for new version
+            MatchingService.scheduleMatching(agentId, minMatchScore)
+            call.respond(HttpStatusCode.Created, result)
+        }
     }
 
     // ─────────────────────────────────────────

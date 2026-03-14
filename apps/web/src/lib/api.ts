@@ -159,6 +159,124 @@ export const delegationsApi = {
     metadata?: Record<string, unknown>;
   }, apiKey: string) =>
     apiFetch("/delegate", { method: "POST", body: JSON.stringify(body), apiKey }),
+  replay: (delegationId: string, apiKey: string) =>
+    apiFetch<{ delegation_id: string; chain_id?: string; status: string }>(`/delegations/${delegationId}/replay`, { method: "POST", apiKey }),
+};
+
+// ─── MCP Servers (v0.4) ──────────────────────────────────────
+
+export const mcpApi = {
+  list: (agentId: string) =>
+    apiFetch<{ servers: Record<string, unknown>[]; count: number }>(`/agents/${agentId}/mcp-servers`),
+  register: (agentId: string, body: { name: string; url: string; auth_type?: string; auth_secret?: string }, apiKey: string) =>
+    apiFetch<{ mcp_id: string }>(`/agents/${agentId}/mcp-servers`, { method: "POST", body: JSON.stringify(body), apiKey }),
+  sync: (agentId: string, mcpId: string, apiKey: string) =>
+    apiFetch<{ tools_discovered: string[]; count: number }>(`/agents/${agentId}/mcp-servers/${mcpId}/sync`, { method: "POST", apiKey }),
+  remove: (agentId: string, mcpId: string, apiKey: string) =>
+    apiFetch(`/agents/${agentId}/mcp-servers/${mcpId}`, { method: "DELETE", apiKey }),
+};
+
+// ─── Orgs (v0.4) ────────────────────────────────────────────
+
+export const orgsApi = {
+  create: (body: { name: string; slug: string }, apiKey?: string) =>
+    apiFetch<{ org_id: string; slug: string; created_at: string }>("/orgs", { method: "POST", body: JSON.stringify(body), apiKey }),
+  get: (orgId: string) => apiFetch<Record<string, unknown>>(`/orgs/${orgId}`),
+  agents: (orgId: string) => apiFetch<{ agents: Record<string, unknown>[]; count: number }>(`/orgs/${orgId}/agents`),
+  delegations: (orgId: string) => apiFetch<{ delegations: Record<string, unknown>[]; count: number }>(`/orgs/${orgId}/delegations`),
+  inviteMember: (orgId: string, email: string, role: string) =>
+    apiFetch(`/orgs/${orgId}/members`, { method: "POST", body: JSON.stringify({ email, role }) }),
+  removeMember: (orgId: string, email: string) =>
+    apiFetch(`/orgs/${orgId}/members/${email}`, { method: "DELETE" }),
+  createKey: (orgId: string, name: string, scopes: string[]) =>
+    apiFetch<{ key_id: string; api_key: string }>(`/orgs/${orgId}/keys`, { method: "POST", body: JSON.stringify({ name, scopes }) }),
+  revokeKey: (orgId: string, keyId: string) =>
+    apiFetch(`/orgs/${orgId}/keys/${keyId}`, { method: "DELETE" }),
+};
+
+// ─── Marketplace (v0.4) ──────────────────────────────────────
+
+export const marketplaceApi = {
+  list: (params?: { category?: string; sort?: string; limit?: number }) => {
+    const q = new URLSearchParams(params as Record<string, string>).toString();
+    return apiFetch<{ agents: Record<string, unknown>[]; count: number }>(`/marketplace${q ? `?${q}` : ""}`);
+  },
+  get: (agentId: string) => apiFetch<Record<string, unknown>>(`/marketplace/${agentId}`),
+  listAgent: (body: { tagline?: string; categories?: string[] }, apiKey: string) =>
+    apiFetch("/marketplace/list", { method: "POST", body: JSON.stringify(body), apiKey }),
+  submitReview: (body: { agent_id: string; rating: number; comment?: string; delegation_id?: string }, apiKey: string) =>
+    apiFetch("/marketplace/reviews", { method: "POST", body: JSON.stringify(body), apiKey }),
+  getReviews: (agentId: string) =>
+    apiFetch<{ reviews: Record<string, unknown>[]; count: number }>(`/marketplace/${agentId}/reviews`),
+};
+
+// ─── Agent Versions (v0.4) ───────────────────────────────────
+
+export interface AgentVersion {
+  id: string;
+  agent_id: string;
+  version: number;
+  has: string[];
+  needs: string[];
+  description: string;
+  changelog?: string;
+  created_at: string;
+}
+
+export const versionsApi = {
+  list: (agentId: string) =>
+    apiFetch<{ versions: AgentVersion[]; count: number }>(`/agents/${agentId}/versions`),
+  get: (agentId: string, v: number) =>
+    apiFetch<AgentVersion>(`/agents/${agentId}/versions/${v}`),
+  publish: (agentId: string, changelog: string | undefined, apiKey: string) =>
+    apiFetch<{ version: number; agent_id: string }>(`/agents/${agentId}/versions`,
+      { method: "POST", body: JSON.stringify({ changelog }), apiKey }),
+};
+
+// ─── Health (v0.4) ───────────────────────────────────────────
+
+export interface HealthSummary {
+  agent_id: string;
+  current_status: string;
+  uptime_7d: number | null;
+  uptime_30d: number | null;
+  avg_latency_ms: number | null;
+  checks: { id: string; status: string; latency_ms: number | null; checked_at: string }[];
+}
+
+export const healthApi = {
+  summary: (agentId: string) => apiFetch<HealthSummary>(`/agents/${agentId}/health`),
+  history: (agentId: string, limit?: number) =>
+    apiFetch<{ checks: { id: string; status: string; latency_ms: number | null; checked_at: string }[]; count: number }>(
+      `/agents/${agentId}/health/history${limit ? `?limit=${limit}` : ""}`),
+};
+
+// ─── Leaderboard (v0.4) ──────────────────────────────────────
+
+export const leaderboardApi = {
+  delegations: () => apiFetch<{ agents: Record<string, unknown>[]; updated_at: string }>("/leaderboard/delegations"),
+  reliability: () => apiFetch<{ agents: Record<string, unknown>[]; updated_at: string }>("/leaderboard/reliability"),
+  wanted: () => apiFetch<{ capabilities: { tool: string; demanded_by: number }[]; updated_at: string }>("/leaderboard/wanted"),
+};
+
+// ─── Analytics (v0.4) ────────────────────────────────────────
+
+export const analyticsApi = {
+  delegations: (days: number, apiKey: string) =>
+    apiFetch<{ series: { date: string; total: number; completed: number; failed: number; running: number }[]; summary: { total: number; success_rate: number; avg_latency_ms: number } }>(
+      `/analytics/delegations?days=${days}`, { apiKey }),
+  latency: (days: number, apiKey: string) =>
+    apiFetch<{ by_task: { task: string; count: number; avg_ms: number; p50_ms: number | null; p95_ms: number | null; p99_ms: number | null }[] }>(
+      `/analytics/latency?days=${days}`, { apiKey }),
+  cost: (days: number, apiKey: string) =>
+    apiFetch<{ series: { date: string; earned_cents: number; spent_cents: number }[] }>(
+      `/analytics/cost?days=${days}`, { apiKey }),
+  reliability: (days: number, apiKey: string) =>
+    apiFetch<{ series: { date: string; total: number; success: number; rate: number }[] }>(
+      `/analytics/reliability?days=${days}`, { apiKey }),
+  topPairs: (days: number, apiKey: string) =>
+    apiFetch<{ pairs: { pair: string; count: number; completed: number; avg_duration_ms: number }[] }>(
+      `/analytics/top-pairs?days=${days}`, { apiKey }),
 };
 
 // ─── Chains (v0.2) ───────────────────────────────────────────

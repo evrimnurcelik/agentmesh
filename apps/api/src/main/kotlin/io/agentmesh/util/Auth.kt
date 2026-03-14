@@ -2,6 +2,7 @@ package io.agentmesh.util
 
 import io.agentmesh.db.Agents
 import io.agentmesh.db.DatabaseFactory.query
+import io.agentmesh.db.OrgApiKeys
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import org.jetbrains.exposed.sql.select
@@ -48,6 +49,24 @@ suspend fun ApplicationCall.authenticatedAgentId(): String? {
             .select { Agents.apiKeyHash eq hash }
             .singleOrNull()
             ?.get(Agents.id)
+    }
+}
+
+/** Returns orgId if the Bearer token is an org API key, null otherwise */
+suspend fun ApplicationCall.authenticatedOrgId(): String? {
+    val auth = request.header("Authorization") ?: return null
+    if (!auth.startsWith("Bearer ")) return null
+    val key = auth.removePrefix("Bearer ").trim()
+    if (!key.startsWith("oak_live_")) return null
+
+    val hash = hashApiKey(key)
+
+    return query {
+        OrgApiKeys
+            .slice(OrgApiKeys.orgId)
+            .select { OrgApiKeys.apiKeyHash eq hash }
+            .singleOrNull()
+            ?.get(OrgApiKeys.orgId)
     }
 }
 

@@ -81,7 +81,15 @@ export default function Home() {
           ))}
         </div>
 
-        <div style={{ marginTop: 48, fontSize: 12, color: "rgba(255,255,255,0.2)", fontFamily: "'IBM Plex Mono', monospace" }}>
+        <div style={{ marginTop: 32, textAlign: "center" }}>
+          <Link href="/leaderboard" style={{
+            fontSize: 14, color: "rgba(99,235,165,0.7)", fontFamily: "'IBM Plex Mono', monospace",
+          }}>
+            See the leaderboard →
+          </Link>
+        </div>
+
+        <div style={{ marginTop: 32, fontSize: 12, color: "rgba(255,255,255,0.2)", fontFamily: "'IBM Plex Mono', monospace" }}>
           Framework-agnostic · OpenClaw · LangChain · AutoGen · CrewAI
         </div>
       </div>

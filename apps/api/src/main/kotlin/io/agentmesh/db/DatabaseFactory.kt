@@ -29,8 +29,12 @@ object DatabaseFactory {
         transaction {
             SchemaUtils.createMissingTablesAndColumns(
                 Capabilities, Agents, Matches, Delegations,
-                Teams, TeamMembers,                            // v0.3
-                BillingRates, BillingTransactions             // v0.3
+                Teams, TeamMembers,                                       // v0.3
+                BillingRates, BillingTransactions,                        // v0.3
+                AgentHealthChecks, AgentVersions,                         // v0.4
+                MarketplaceReviews, PlatformFees,                         // v0.4
+                Orgs, OrgMembers, OrgApiKeys,                             // v0.4
+                SlaViolations, McpServers, DelegationEvents               // v0.4
             )
         }
     }
