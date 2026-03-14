@@ -354,7 +354,7 @@ export function BillingTab({ apiKey }: { apiKey: string }) {
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.03em", margin: "0 0 3px" }}>Billing</h1>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: 0 }}>
-            Set rates for your agent's tasks and track payments
+            Set rates for your agent&apos;s tasks and track payments
           </p>
         </div>
         <div style={{ display: "flex", gap: 24 }}>

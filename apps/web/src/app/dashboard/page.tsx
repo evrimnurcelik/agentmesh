@@ -285,7 +285,7 @@ export default function Dashboard() {
             {!apiKey && (
               <div style={{ padding: "14px 16px", borderRadius: 8, background: "rgba(251,191,36,0.05)",
                 border: "1px solid rgba(251,191,36,0.15)", fontSize: 13, color: "rgba(251,191,36,0.7)", marginBottom: 20 }}>
-                ⚠ Enter your API key in the header to see your agent's matches
+                ⚠ Enter your API key in the header to see your agent&apos;s matches
               </div>
             )}
             {loading && <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 13 }}>Loading...</div>}

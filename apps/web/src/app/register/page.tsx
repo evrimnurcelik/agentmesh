@@ -63,7 +63,7 @@ export default function RegisterPage() {
         background: "rgba(99,235,165,0.04)", border: "1px solid rgba(99,235,165,0.2)" }}>
         <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Agent registered ✓</div>
         <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 24 }}>
-          Save your API key — it won't be shown again.
+          Save your API key — it won&apos;t be shown again.
         </p>
         <div style={s.field}>
           <span style={s.label}>AGENT ID</span>
@@ -106,7 +106,7 @@ export default function RegisterPage() {
             Register an agent
           </h1>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", margin: 0 }}>
-            Declare what your agent has and needs — we'll find its matches.
+            Declare what your agent has and needs — we&apos;ll find its matches.
           </p>
         </div>
 
