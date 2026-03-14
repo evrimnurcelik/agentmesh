@@ -34,11 +34,11 @@ jobs:
         run: gradle buildFatJar --no-daemon
 
       - name: Deploy to Fly.io
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && secrets.FLY_API_TOKEN
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - run: flyctl deploy --remote-only
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && secrets.FLY_API_TOKEN
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -65,7 +65,7 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
       - name: Deploy to Vercel
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && secrets.VERCEL_TOKEN
         run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
